@@ -1,0 +1,159 @@
+<!doctype html>
+    <html lang=”en”>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <!-- Name of your awesome camera app -->
+        <title>ieye</title>
+        <link rel="shortcut icon" type="image/vnd.microsoft.icon" href="favicon.ico"/>
+        <!-- Link to your main style sheet-->
+        <style>
+            html, body {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                width: 100%;
+                font-family: sans-serif;
+                text-align: center;
+            }
+            #login-image-plain {
+                display: flex;
+                margin: 20px;
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: space-around;
+            }
+            .login-eye-picture {
+                width: 40vw;
+                border-radius: 20px;
+            }
+            .login-cell {
+                display: flex;
+                justify-content: center;
+                flex-direction: column;
+                border: 3px solid black;
+                margin: 2px;
+                border-radius: 20px;
+                background-color: black;
+                color: white;
+            }
+            .you-are {
+                display: flex;
+                height: 10vh;
+                width: 100%;
+                flex-direction: column;
+                justify-content: space-evenly;
+            }
+            #identity {
+                color: rgb(8, 62, 144);
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 2em;
+            }
+            #back-btn {
+                z-index: 1000;
+                position: fixed;
+                left: 0;
+                top: 0;
+                background-color: black;
+                color: white;
+                font-size: 16px;
+                border-radius: 30px;
+                border: none;
+                padding: 15px 20px;
+                margin: 15px 20px;
+                text-align: center;
+                box-shadow: 0 5px 10px 0 rgba(0,0,0,0.2);
+            }
+            #back-btn:hover {
+                background-color: white;
+                color: black;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>Login Results</h2>
+
+        <button id="back-btn">Back</button>
+
+        <div class="you-are">
+            <h4>Your Identity...</h4>
+            <span id="identity"></span>
+        </div>
+
+        <div id="login-image-plain"></div>
+
+        <script>
+            // IndexedDB variables
+            const DB_NAME = "EYE_DB";
+            const DB_OBJ_STORE_NAME = "EYE_OBJ_DB";
+
+            // DOM variables
+            const loginImagePlain = document.querySelector("#login-image-plain"),
+                identitySpan = document.querySelector("#identity"),
+                backBtn = document.querySelector("#back-btn");
+
+            backBtn.onclick = function() {
+                window.location.assign('/');
+            };
+
+            function displayResults (results) {
+                if (results.length > 0) {
+                    const sorted_results = results.sort((a, b) => {
+                        return a[0] < b[0] ? 1 : -1;
+                    });
+                    sorted_results.forEach((data, index) => {
+                        const div_element = document.createElement('div');
+                        div_element.className = 'login-cell';
+
+                        // add the image title
+                        const img_title_element = document.createElement('h5');
+                        img_title_element.textContent = `${data[0]} matches with ${data[1]}`;
+                        div_element.appendChild(img_title_element);
+
+                        // add the image element
+                        const img_element = document.createElement('img');
+                        img_element.className = 'login-eye-picture';
+                        img_element.id = `res-${index}`;
+                        img_element.src = URL.createObjectURL(data[2]);
+                        div_element.appendChild(img_element);
+
+                        // add to grid
+                        loginImagePlain.appendChild(div_element);
+                    });
+                    identitySpan.textContent = sorted_results[0][1]
+                } else {
+                    identitySpan.textContent = 'Could not be determined';
+                }
+            };
+
+            window.onload = function() {
+            // get image from indexed db
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onerror = () => {
+                    console.log('error connecting to indexed db');
+                };
+                request.onsuccess = (event) => {
+                    const db = request.result;
+                    const transaction = db.transaction([DB_OBJ_STORE_NAME], 'readwrite');
+                    const cursorRequest = transaction.objectStore(DB_OBJ_STORE_NAME).openCursor();
+                    cursorRequest.onerror = function(event) {
+                        console.err("error fetching data");
+                    };
+                    const results = [];
+                    cursorRequest.onsuccess = function(event) {
+                        const cursor = event.target.result;
+                        if (!cursor) return displayResults(results);
+                        const key = cursor.primaryKey;
+                        const img_blob = cursor.value;
+                        const d = key.split('_');
+                        const num_matchs = parseInt(d[0])
+                        const name = d[1]
+                        results.push([num_matchs, name, img_blob]);
+                        cursor.continue();
+                    };
+                };
+            };
+        </script>
+    </body>
+</html>

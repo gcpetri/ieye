@@ -1,0 +1,407 @@
+<!doctype html>
+    <html lang=”en”>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <!-- Name of your awesome camera app -->
+        <title>ieye</title>
+        <link rel="shortcut icon" type="image/vnd.microsoft.icon" href="/static/favicon.ico"/>
+        <!-- Link to your main style sheet-->
+        <style>
+            html, body {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                width: 100%;
+                font-family: sans-serif;
+            }
+            #camera #camera, #camera-view, #camera-sensor {
+                position: fixed;
+                height: 100%;
+                width: 100%;
+                object-fit: cover;
+            }
+            #camera-view, #camera-sensor {
+                transform: scaleX(-1);
+                filter: FlipH;
+            }
+            #camera-view {
+                background-color: black;
+            }
+            .options {
+                display: flex;
+                position: fixed;
+                bottom: 0px;
+                width: 100%;
+                height: 20vh;
+                flex-direction: row;
+                justify-content: center;
+            }
+            #camera-trigger, #login-btn, #signup-btn {
+                width: 200px;
+                background-color: black;
+                color: white;
+                font-size: 16px;
+                border-radius: 30px;
+                border: none;
+                padding: 15px 20px;
+                text-align: center;
+                box-shadow: 0 5px 10px 0 rgba(0,0,0,0.2);
+                margin: 20px;
+            }
+            #camera-trigger:hover, #login-btn:hover, #signup-btn:hover {
+                background-color:rgb(58, 58, 58);
+            }
+            #camera-trigger {
+                background-image: url("/static/camera.png");
+                background-size: 30%;
+                background-repeat: no-repeat;
+                background-position: center;
+            }
+            #login-btn, #signup-btn {
+                display: none;
+            }
+            #first-name {
+                width: 300px;
+                background-color: black;
+                color: white;
+                font-size: 16px;
+                border-radius: 30px;
+                border: none;
+                padding: 15px 20px;
+                text-align: center;
+                box-shadow: 0 5px 10px 0 rgba(0,0,0,0.2);
+                display: none;
+                margin: 20px;
+            }
+            #go-btn {
+                width: 100px;
+                background-color: rgb(255, 255, 255);
+                color: rgb(0, 0, 0);
+                font-size: 16px;
+                border-radius: 30px;
+                border: none;
+                padding: 15px 20px;
+                text-align: center;
+                box-shadow: 0 5px 10px 0 rgba(0,0,0,0.2);
+                display: none;
+                margin: 20px;
+            }
+            #go-btn:hover {
+                background-color: grey;
+            }
+            .num-users {
+                text-align: center;
+                z-index: 1000;
+                display: flex;
+                position: fixed;
+                right: 0;
+                margin: 20px;
+                padding: 10px;
+                background-color: white;
+                color: black;
+                border-radius: 20px;
+                flex-direction: column;
+                justify-content: center;
+            }
+            .instructions {
+                color: white;
+                position: fixed;
+                text-align: center;
+                top: 10px;
+                width: 100%;
+            }
+        </style>
+    </head>
+    <body>
+        <main id="camera">
+            <!-- Display number of users -->
+            <div class="num-users">
+                <span>Number of users</span>
+                <b><span id="num-users"></span></b>
+            </div>
+            <!-- Camera view -->
+            <video id="camera-view" autoplay playsinline></video>
+            <!-- Camera sensor -->
+            <canvas id="camera-sensor"></canvas>
+            <!-- Camera trigger -->
+            <div class="options">
+                <button id="camera-trigger"></button>
+                <button id="login-btn">Login</button>
+                <button id="signup-btn">Sign Up</button>
+                <!-- First name input -->
+                <input id="first-name" type="text" lab placeholder="your nickname here" pattern="[a-z]+"
+                    onkeyup="this.value = this.value.toLowerCase();"
+                >
+                <!-- Go -->
+                <button id="go-btn">Go</button>
+            </div>
+            <div class="instructions">
+                <span>Fit your iris in the white circle</span>
+            </div>
+        </main>
+
+        <!-- JSZip.js -->
+        <script src="/static/js/jsZip.min.js"></script>
+
+        <script>
+            const constraints = { 
+                video: {
+                    width: window.innerWidth,
+                    facingMode: 'user',
+                },
+                audio: false,
+            };
+
+            let canvas_img = null;
+
+            // DOM variables
+            const cameraView = document.querySelector("#camera-view"),
+                cameraSensor = document.querySelector("#camera-sensor"),
+                cameraTrigger = document.querySelector("#camera-trigger"),
+                loginBtn = document.querySelector("#login-btn"),
+                signupBtn = document.querySelector("#signup-btn"),
+                firstNameInput = document.querySelector("#first-name"),
+                goBtn = document.querySelector("#go-btn"),
+                numUsersSpan = document.querySelector("#num-users");
+
+            // IndexedDB variables
+            const DB_NAME = "EYE_DB";
+            const DB_OBJ_STORE_NAME = "EYE_OBJ_DB";
+
+            // functions
+            function cameraStart() {
+                window.navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+                    if ("srcObject" in cameraView) {
+                        const track = stream.getTracks()[0];
+                        cameraView.srcObject = stream;
+                    } else {
+                        // Avoid using this in new browsers
+                        const track = stream.getTracks()[0];
+                        cameraView.src = URL.createObjectURL(stream);
+                    }
+                }).catch(function(error) {
+                    console.error("Oops. Something is broken.", error);
+                });
+            };
+
+            cameraTrigger.onclick = function() {
+                const FINAL_IMG_SIZE = 512;
+
+                // create new canvas
+                const tmp_canvas = document.createElement('canvas');
+                const ctx = tmp_canvas.getContext('2d');
+                ctx.width = FINAL_IMG_SIZE;
+                ctx.height = FINAL_IMG_SIZE;
+
+                // crop the image
+                const W = cameraView.videoWidth;// cameraSensor.width;
+                const H = cameraView.videoHeight;// cameraSensor.height;
+
+                // width and height of the eye image
+                const dHeight = H / 2;
+                const sx = (W / 2) - (dHeight / 2);
+                const sy = (H / 3) - (dHeight / 2);
+                const sHeight = dHeight;
+                tmp_canvas.width = FINAL_IMG_SIZE;
+                tmp_canvas.height = FINAL_IMG_SIZE;
+                ctx.drawImage(cameraView, sx, sy, sHeight, sHeight, 0, 0, FINAL_IMG_SIZE, FINAL_IMG_SIZE);
+                tmp_canvas.toBlob(function (blob) {
+                    canvas_img = blob;
+                });
+
+                cameraSensor.width = cameraView.videoWidth;
+                cameraSensor.height = cameraView.videoHeight;
+                cameraSensor.getContext("2d").drawImage(cameraView, 0, 0);
+                cameraTrigger.style.display = "none";
+                
+                // can't login if no users
+                if (numUsersSpan.textContent !== '0') {
+                    loginBtn.style.display = "block";
+                }
+                signupBtn.style.display = "block";
+            };
+
+            loginBtn.onclick = function() {
+                sendPicture('$null$');
+            };
+
+            signupBtn.onclick = function() {
+                firstNameInput.style.display = "block";
+                goBtn.style.display = "block";
+                loginBtn.style.display = "none";
+                signupBtn.style.display = "none";
+            };
+
+            goBtn.onclick = function() {
+                const firstName = firstNameInput.value;
+                if ((firstName?.length ?? 0) === 0) {
+                    alert('you must enter your nickname');
+                    return;
+                }
+                sendPicture(firstName);
+            };
+
+            function sendPicture(firstName) {
+                if (canvas_img === null || canvas_img === undefined) {
+                    alert('could not get picture from your device');
+                    return;
+                }
+                goBtn.disabled = true;
+
+                // Post to the flask server
+                const form_data = new FormData();
+                form_data.append('file', canvas_img, firstName);
+                fetch('/upload', {
+                    method: "POST",
+                    body: form_data,
+                })
+                .then(response => {
+                    if (response.ok) {
+                        goBtn.disabled = false;
+                        return response.blob();
+                    }
+                    if (response.status === 400) {
+                        response.json().then(err_json => {
+                            alert(err_json.reason);
+                        });
+                    }
+                    throw new Error("error in sendPicture");
+                })
+                .then(res_blob => {
+                    const js_zip = new JSZip();
+                    js_zip.loadAsync(res_blob).then(function (zip) {
+                        const request = indexedDB.open(DB_NAME, 1);
+                        request.onerror = () => {
+                            console.log('error connecting to indexed db');
+                        };
+                        request.onsuccess = (event) => {
+                            let images_putted = 0;
+                            const db = request.result;
+                            const files = Object.entries(zip.files);
+                            const num_files = files.length;
+                            files.forEach(([name, data], index) => {
+                                const transaction = db.transaction([DB_OBJ_STORE_NAME], 'readwrite');
+                                const blob_img = new Blob([data._data.compressedContent], { type: 'image/png' });
+                                const putRequest = transaction.objectStore(DB_OBJ_STORE_NAME).put(blob_img, name);
+                                putRequest.onerror = () => {
+                                    console.log('error putting data');
+                                };
+                                putRequest.onsuccess = (event) => {
+                                    images_putted += 1;
+                                    if (images_putted === num_files) {
+                                        // go to result page to view them
+                                        moveToResPage(firstName);
+                                    }
+                                };
+                            });
+                        };
+                    });
+                })
+                .catch(err => {
+                    console.log(err);
+                    goBtn.disabled = false;
+                });
+            };
+
+            function moveToResPage(firstName) {
+                if (firstName === '$null$') {
+                    window.location.assign('/login_result');
+                } else {
+                    window.location.assign('/result');
+                }
+            };
+
+            function clearDb() {
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onerror = () => {
+                    console.log('error connecting to indexed db');
+                };
+                request.onsuccess = (event) => {
+                    const db = request.result;
+                    const transaction = db.transaction([DB_OBJ_STORE_NAME], 'readwrite');
+                    const clearRequest = transaction.objectStore(DB_OBJ_STORE_NAME).clear();
+                    clearRequest.onerror = () => {
+                        console.log('error clearing data');
+                    };
+                    clearRequest.onsuccess = (event) => {
+                        console.log('db cleared');
+                    };
+                };
+            };
+
+            function initDb() {
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onerror = () => {
+                    console.log('error connecting to indexed db');
+                };
+                request.onupgradeneeded = (event) => {
+                    const db = request.result;
+                    const obj_store = db.createObjectStore(DB_OBJ_STORE_NAME);
+                };
+            };
+
+            function getNumUsers() {
+                fetch('/num-users', {
+                    method: "GET"
+                }).then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    }
+                    throw new Error('could not get num users');
+                }).then(res_json => {
+                    numUsersSpan.textContent = res_json.num;
+                }).catch(err => {
+                    console.error(err);
+                });
+            }
+
+            // Start the video stream when the window loads
+            window.onload = function() {
+                const ctx = cameraSensor.getContext('2d');
+                ctx.canvas.width  = window.innerWidth;
+                ctx.canvas.height = window.innerHeight;
+
+                const W = cameraSensor.width;
+                const H = cameraSensor.height;
+
+                cameraView.style.width = W;
+                cameraView.style.height = H;
+
+                // add the eye outline
+                const circle_img = new Image();
+                circle_img.src = "/static/circle.png";
+                circle_img.onload = function () {
+                    const dHeight = H / 2;
+                    const dx = (W / 2) - (dHeight / 2);
+                    const dy = (H / 3) - (dHeight / 2);
+                    cameraSensor.getContext("2d").drawImage(circle_img, dx, dy, dHeight, dHeight);
+                };
+
+                // add the crosshair
+                const plus_img = new Image();
+                plus_img.src = "/static/plus.png";
+                plus_img.onload = function () {
+                    const dHeight = 50;
+                    const dx = (W / 2) - (dHeight / 2);
+                    const dy = (H / 3) - (dHeight / 2);
+                    cameraSensor.getContext("2d").drawImage(plus_img, dx, dy, dHeight, dHeight);
+                };
+
+                if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
+                    console.log("Let's get this party started");
+                } else {
+                    console.log('got nothing');
+                    return;
+                }
+
+                getNumUsers();
+
+                cameraStart();
+                initDb();
+                clearDb();
+            };
+        </script>
+    </body>
+</html>

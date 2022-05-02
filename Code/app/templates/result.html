@@ -1,0 +1,114 @@
+<!doctype html>
+    <html lang=”en”>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <!-- Name of your awesome camera app -->
+        <title>ieye</title>
+        <link rel="shortcut icon" type="image/vnd.microsoft.icon" href="favicon.ico"/>
+        <!-- Link to your main style sheet-->
+        <style>
+            body {
+                font-family: sans-serif;
+                text-align: center;
+            }
+            #signup-image-plain {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex-direction: column;
+            }
+            .signup-eye-picture {
+                width: 40vw;
+                border-radius: 20px;
+            }
+            #back-btn {
+                z-index: 1000;
+                position: fixed;
+                left: 0;
+                top: 0;
+                background-color: black;
+                color: white;
+                font-size: 16px;
+                border-radius: 30px;
+                border: none;
+                padding: 15px 20px;
+                margin: 15px 20px;
+                text-align: center;
+                box-shadow: 0 5px 10px 0 rgba(0,0,0,0.2);
+            }
+            #back-btn:hover {
+                background-color: white;
+                color: black;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>Processed Your Eye Information</h2>
+
+        <button id="back-btn">Back</button>
+
+        <div id="signup-image-plain"></div>
+
+        <script>
+            // IndexedDB variables
+            const DB_NAME = "EYE_DB";
+            const DB_OBJ_STORE_NAME = "EYE_OBJ_DB";
+
+            // DOM variables
+            const signupImagePlain = document.querySelector("#signup-image-plain"),
+                backBtn = document.querySelector("#back-btn");
+            
+            backBtn.onclick = function() {
+                window.location.assign('/');
+            };
+
+            window.onload = function() {
+            // get image from indexed db
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onerror = () => {
+                    console.log('error connecting to indexed db');
+                };
+                request.onsuccess = (event) => {
+                    const db = request.result;
+                    const transaction = db.transaction([DB_OBJ_STORE_NAME], 'readwrite');
+                    const cursorRequest = transaction.objectStore(DB_OBJ_STORE_NAME).openCursor();
+                    cursorRequest.onerror = function(event) {
+                        console.err("error fetching data");
+                    };
+                    cursorRequest.onsuccess = function(event) {
+                        const cursor = event.target.result;
+                        if (cursor) {
+                            const key = cursor.primaryKey;
+                            const img_blob = cursor.value;
+
+                            // add the image title
+                            const img_title_element = document.createElement('h3');
+                            img_title_element.textContent = key;
+                            signupImagePlain.appendChild(img_title_element);
+
+                            // add the image element
+                            const img_element = document.createElement('img');
+                            img_element.className = 'signup-eye-picture';
+                            img_element.id = `res-${key}`;
+                            img_element.src = URL.createObjectURL(img_blob);
+                            signupImagePlain.appendChild(img_element);
+
+                            // add an arrow
+                            const arrow_element = document.createElement('img');
+                            arrow_element.src = '/static/arrow.png';
+                            signupImagePlain.appendChild(arrow_element);
+
+                            cursor.continue();
+                        } else {
+                            const done_element = document.createElement('h3');
+                            done_element.textContent = 'done.';
+                            signupImagePlain.appendChild(done_element);
+                        }
+                    };
+                };
+            };
+        </script>
+    </body>
+</html>

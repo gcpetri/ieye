@@ -1,0 +1,141 @@
+<!doctype html>
+    <html lang=”en”>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <!-- Name of your awesome camera app -->
+        <title>ieye</title>
+        <link rel="shortcut icon" type="image/vnd.microsoft.icon" href="/static/favicon.ico"/>
+        <!-- Link to your main style sheet-->
+        <style>
+            html, body {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                width: 100%;
+            }
+            .options {
+                display: flex;
+                position: fixed;
+                bottom: 0px;
+                width: 100%;
+                height: 20vh;
+                flex-direction: row;
+                justify-content: center;
+            }
+            #test-go-btn {
+                width: 100px;
+                background-color: rgb(255, 255, 255);
+                color: rgb(0, 0, 0);
+                font-size: 16px;
+                border-radius: 30px;
+                border: none;
+                padding: 15px 20px;
+                text-align: center;
+                box-shadow: 0 5px 10px 0 rgba(0,0,0,0.2);
+                margin: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="options">
+            <!-- Go -->
+            <button id="test-go-btn">Go</button>
+        </div>
+
+        <!-- JSZip.js -->
+        <script src="/static/js/jsZip.min.js"></script>
+
+        <!-- Custom script -->
+        <script>
+            const goBtn = document.querySelector("#test-go-btn");
+
+            // IndexedDB variables
+            const DB_NAME = "EYE_DB";
+            const DB_OBJ_STORE_NAME = "EYE_OBJ_DB";
+
+            goBtn.onclick = function() {
+                testPicture();
+            };
+
+            function testPicture() {
+                fetch('/go-test', {
+                    method: "GET",
+                }).then(response => {
+                    console.log(response);
+                    if (response.ok) {
+                        goBtn.disabled = false;
+                        return response.blob();
+                    }
+                    throw new Error('Server returned error');
+                })
+                .then(res_blob => {
+                    const js_zip = new JSZip();
+                    js_zip.loadAsync(res_blob).then(function (zip) {
+                        console.log(zip);
+                        const request = indexedDB.open(DB_NAME, 1);
+                        request.onerror = () => {
+                            console.log('error connecting to indexed db');
+                        };
+                        request.onsuccess = (event) => {
+                            let images_putted = 0;
+                            const db = request.result;
+                            const files = Object.entries(zip.files);
+                            const num_files = files.length;
+                            files.forEach(([name, data], index) => {
+                                console.log(name);
+                                const transaction = db.transaction([DB_OBJ_STORE_NAME], 'readwrite');
+                                const blob_img = new Blob([data._data.compressedContent], { type: 'image/png' });
+                                const putRequest = transaction.objectStore(DB_OBJ_STORE_NAME).put(blob_img, name);
+                                putRequest.onerror = () => {
+                                    console.log('error putting data');
+                                };
+                                putRequest.onsuccess = (event) => {
+                                    console.log('putted');
+                                    images_putted += 1;
+                                    if (images_putted === num_files) {
+                                        // go to result page to view them
+                                        moveToResPage();
+                                    }
+                                };
+                            });
+                        };
+                    });
+                })
+                .catch(err => {
+                    console.log(err);
+                    goBtn.disabled = false;
+                    alert('test failed.');
+                });
+            };
+
+            function moveToResPage() {
+                window.location.assign('/result');
+            };
+
+            function clearDb() {
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onerror = () => {
+                    console.log('error connecting to indexed db');
+                };
+                request.onsuccess = (event) => {
+                    const db = request.result;
+                    const transaction = db.transaction([DB_OBJ_STORE_NAME], 'readwrite');
+                    const clearRequest = transaction.objectStore(DB_OBJ_STORE_NAME).clear();
+                    clearRequest.onerror = () => {
+                        console.log('error clearing data');
+                    };
+                    clearRequest.onsuccess = (event) => {
+                        console.log('db cleared');
+                    };
+                };
+            };
+
+            // Start the video stream when the window loads
+            window.onload = function() {
+                clearDb();
+            };
+        </script>
+    </body>
+</html>
